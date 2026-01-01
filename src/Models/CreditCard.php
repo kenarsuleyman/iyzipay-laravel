@@ -17,7 +17,8 @@ class CreditCard extends Model
 
     public function owner(): BelongsTo
     {
-        return $this->belongsTo(config('iyzipay.billableModel'), 'billable_id');
+        $modelClass = config('iyzipay.billableModel', 'App\Models\User');
+        return $this->belongsTo($modelClass, 'billable_id');
     }
 
     public function transactions(): HasMany
