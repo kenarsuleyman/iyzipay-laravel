@@ -19,17 +19,24 @@ trait PreparesCreditCardRequest
 {
 
     /**
-     * @param $attributes
+     * @param CardData|array $attributes
      * @throws CreditCardFieldsException
      */
-    private function validateCreditCardAttributes($attributes): void
+    private function validateCreditCardAttributes(CardData|array $attributes): void
     {
-        $v = Validator::make($attributes, [
-            'alias' => 'required',
+        // keep backwards compatibility with old array structure
+        if ($attributes instanceof CardData) {
+            $data = $attributes->toArray();
+        } else {
+            $data = $attributes;
+        }
+
+        $v = Validator::make($data, [
+            'alias'  => 'required',
             'holder' => 'required',
             'number' => 'required|digits_between:15,16',
-            'month' => 'required|digits:2',
-            'year' => 'required|digits:4'
+            'month'  => 'required|digits:2',
+            'year'   => 'required|digits:4'
         ]);
 
         if ($v->fails()) {

@@ -29,6 +29,17 @@ readonly class CardData
         );
     }
 
+    public function toArray(): array
+    {
+        return [
+            'alias'  => $this->alias,
+            'holder' => $this->holderName, // Mapping back to legacy key
+            'number' => $this->cardNumber,
+            'month'  => $this->expireMonth,
+            'year'   => $this->expireYear,
+        ];
+    }
+
     /**
      * Convert this DTO into the official Iyzico SDK Model.
      */

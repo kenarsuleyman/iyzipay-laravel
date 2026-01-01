@@ -3,6 +3,8 @@
 namespace Iyzico\IyzipayLaravel;
 
 use Illuminate\Http\Request;
+use Iyzico\IyzipayLaravel\DTOs\CardData;
+use Iyzico\IyzipayLaravel\Exceptions\Card\CardSaveException;
 use Iyzico\IyzipayLaravel\Exceptions\Card\PayableMustHaveCreditCardException;
 use Iyzico\IyzipayLaravel\Exceptions\Fields\BillFieldsException;
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardRemoveException;
@@ -58,17 +60,16 @@ class IyzipayLaravel
 	}
 
 
-	/**
-	 * Adds credit card for billable & payable model.
-	 *
-	 * @param PayableContract $payable
-	 * @param array           $attributes
-	 *
-	 * @return CreditCard
-	 * @throws BillFieldsException
-	 * @throws CreditCardFieldsException
-	 */
-	public function addCreditCard (Payable $payable, array $attributes = []): CreditCard
+    /**
+     * Adds credit card for billable & payable model.
+     *
+     * @param PayableContract $payable
+     * @param CardData|array $attributes
+     *
+     * @return CreditCard
+     * @throws CardSaveException
+     */
+	public function addCreditCard (Payable $payable, CardData|array $attributes = []): CreditCard
 	{
 
 		$this->validateBillable( $payable );
