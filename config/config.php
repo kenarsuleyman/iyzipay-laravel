@@ -25,4 +25,16 @@ return [
         // ],
 
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Auto-Load Migrations
+    |--------------------------------------------------------------------------
+    |
+    | If you want to customize the migrations (e.g., use ULID or UUID),
+    | set this to false, publish the migrations, and edit them in your
+    | database/migrations folder.
+    |
+    */
+    'load_migrations' => true,
 ];
