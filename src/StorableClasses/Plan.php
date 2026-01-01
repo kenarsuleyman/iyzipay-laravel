@@ -8,8 +8,9 @@ use Iyzico\IyzipayLaravel\Exceptions\Fields\PlanFieldsException;
 use Iyzico\IyzipayLaravel\ProductContract;
 use Iyzipay\Model\BasketItemType;
 use JsonSerializable;
+use Stringable;
 
-class Plan implements ProductContract, Arrayable, JsonSerializable
+class Plan implements ProductContract, Arrayable, JsonSerializable, Stringable
 {
     public function __construct(
         public string $id = '',
