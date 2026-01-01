@@ -9,8 +9,6 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('transactions', function (Blueprint $table) {
-            $table->dropForeign(['credit_card_id']);
-            $table->dropForeign(['subscription_id']);
 
             $table->unsignedBigInteger('id', true)->change();
 
