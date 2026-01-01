@@ -13,11 +13,16 @@ class Subscription extends Model
 {
 	use SoftDeletes;
 
-    protected $dates = [
+    protected $fillable = [
+        'next_charge_amount',
+        'currency',
         'next_charge_at',
-        'canceled_at',
-        'created_at',
-        'updated_at'
+        'plan'
+    ];
+
+    protected $casts = [
+        'next_charge_at' => 'datetime',
+        'canceled_at' => 'datetime',
     ];
 
     public function scopeActive($query)
