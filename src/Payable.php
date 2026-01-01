@@ -3,6 +3,8 @@
 namespace Iyzico\IyzipayLaravel;
 
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardRemoveException;
+use Iyzico\IyzipayLaravel\Exceptions\Card\CardSaveException;
+use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionSaveException;
 use Iyzico\IyzipayLaravel\Models\CreditCard;
 use Iyzico\IyzipayLaravel\Models\Subscription;
 use Iyzico\IyzipayLaravel\Models\Transaction;
@@ -63,7 +65,7 @@ trait Payable
     }
 
     /**
-     * Payable can has many subscriptions
+     * Payable can have many subscriptions
      *
      * @return HasMany
      */
@@ -77,6 +79,7 @@ trait Payable
      *
      * @param array $attributes
      * @return CreditCard
+     * @throws CardSaveException
      */
     public function addCreditCard(array $attributes = []): CreditCard
     {
@@ -103,12 +106,14 @@ trait Payable
      * Single payment for the payable
      *
      * @param Collection $products
+     * @param CreditCard $creditCard
      * @param string $currency
      * @param int $installment
      * @param bool $subscription
      * @return Transaction
+     * @throws TransactionSaveException
      */
-    public function pay(Collection $products, CreditCard $creditCard, $currency = 'TRY', $installment = 1, $subscription = false): Transaction
+    public function pay(Collection $products, CreditCard $creditCard, $currency = 'TRY', $installment = 1, bool $subscription = false): Transaction
     {
         return IyzipayLaravel::singlePayment($this, $products, $creditCard, $currency, $installment, $subscription);
     }
@@ -119,7 +124,7 @@ trait Payable
 	 * @param string     $currency
 	 * @param int        $installment
 	 * @param bool       $subscription
-	 *
+	 * @throws
 	 * @return ThreedsInitialize
 	 */
 	public function securePay(Collection $products, CreditCard $creditCard, $currency = 'TRY', $installment = 1, $subscription = false): ThreedsInitialize
@@ -135,11 +140,11 @@ trait Payable
     /**
      * Subscribe to a plan.
      * @param Plan $plan
+     * @param CreditCard $creditCard
+     * @return ThreedsInitialize
      */
     public function subscribe(Plan $plan, CreditCard $creditCard): ThreedsInitialize
     {
-        Model::unguard();
-
         $this->subscriptions()->save(
             new Subscription([
                 'next_charge_amount' => $plan->price,
@@ -150,8 +155,6 @@ trait Payable
         );
 
         return $this->paySubscription($creditCard);
-
-        Model::reguard();
     }
 
     /**
