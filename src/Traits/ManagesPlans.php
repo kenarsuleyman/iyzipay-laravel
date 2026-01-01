@@ -66,7 +66,7 @@ trait ManagesPlans
      * @param $id
      * @return Plan | null
      */
-    public static function findPlan($id)
+    public static function findPlan($id): ?Plan
     {
         return static::plans()->where('id', $id)->first();
     }
