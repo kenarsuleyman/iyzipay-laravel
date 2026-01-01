@@ -2,7 +2,7 @@
 
 namespace Iyzico\IyzipayLaravel\Models;
 
-use Iyzico\IyzipayLaravel\StorableClasses\Plan;
+use Iyzico\IyzipayLaravel\Casts\PlanCast;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,8 +21,10 @@ class Subscription extends Model
     ];
 
     protected $casts = [
-        'next_charge_at' => 'datetime',
-        'canceled_at' => 'datetime',
+        'next_charge_at'     => 'datetime',
+        'canceled_at'        => 'datetime',
+        'next_charge_amount' => 'decimal:2',
+        'plan'               => PlanCast::class,
     ];
 
     public function scopeActive($query)
@@ -39,7 +41,8 @@ class Subscription extends Model
 
     public function owner(): BelongsTo
     {
-        return $this->belongsTo(config('iyzipay.billableModel'), 'billable_id');
+        $modelClass = config('iyzipay.billableModel', 'App\Models\User');
+        return $this->belongsTo($modelClass, 'billable_id');
     }
 
     public function transactions(): HasMany
@@ -47,7 +50,7 @@ class Subscription extends Model
         return $this->hasMany(Transaction::class);
     }
 
-    public function cancel(): Subscription
+    public function cancel(): self
     {
         $this->canceled_at = Carbon::now();
         $this->save();
@@ -60,17 +63,4 @@ class Subscription extends Model
         return ! empty($this->canceled_at);
     }
 
-    public function setPlanAttribute($value)
-    {
-        $this->attributes['plan'] = (string)$value;
-    }
-
-    public function getPlanAttribute($value)
-    {
-        if (empty($value)) {
-            return $value;
-        }
-
-        return (new \JsonMapper())->map(json_decode($value), new Plan());
-    }
 }
