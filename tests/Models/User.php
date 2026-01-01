@@ -11,7 +11,7 @@ class User extends Model implements PayableContract
     use Payable;
 
     protected $fillable = [
-        'name'
+        'name',
     ];
 
     public $timestamps = false;

@@ -7,11 +7,10 @@ use Iyzico\IyzipayLaravel\IyzipayLaravelFacade as IyzipayLaravel;
 class PlansTest extends TestCase
 {
 
-    public function setUp()
+    public function setUp(): void
     {
         parent::setUp();
-
-        IyzipayLaravel::rollbackPlans();
+        config()->set('iyzipay.plans', []);
     }
 
     /** @test */

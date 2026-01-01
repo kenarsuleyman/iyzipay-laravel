@@ -2,6 +2,8 @@
 
 namespace Iyzico\IyzipayLaravel\Tests;
 
+use Iyzico\IyzipayLaravel\Exceptions\Card\CardRemoveException;
+use Iyzico\IyzipayLaravel\Exceptions\Card\CardSaveException;
 use Iyzico\IyzipayLaravel\Exceptions\Fields\CreditCardFieldsException;
 use Iyzico\IyzipayLaravel\Exceptions\Fields\BillFieldsException;
 use Iyzico\IyzipayLaravel\Models\CreditCard;
@@ -9,7 +11,9 @@ use Iyzico\IyzipayLaravel\Models\CreditCard;
 class CreditCardsTest extends TestCase
 {
 
-    /** @test */
+    /** @test
+     * @throws CardSaveException
+     */
     public function must_set_bill_information_before_adding_credit_cards()
     {
         $user = $this->createUser();
@@ -18,7 +22,9 @@ class CreditCardsTest extends TestCase
         $user->addCreditCard($this->prepareCreditCardFields());
     }
 
-    /** @test */
+    /** @test
+     * @throws CardSaveException
+     */
     public function must_set_all_credit_card_fields()
     {
         $user = $this->prepareBilledUser();
@@ -29,7 +35,9 @@ class CreditCardsTest extends TestCase
         ]);
     }
 
-    /** @test */
+    /** @test
+     * @throws CardSaveException
+     */
     public function add_credit_card_operations_returns_card_model()
     {
         $user = $this->prepareBilledUser();
@@ -43,7 +51,10 @@ class CreditCardsTest extends TestCase
         $this->assertNotEmpty($user->iyzipay_key);
     }
 
-    /** @test */
+    /** @test
+     * @throws CardSaveException
+     * @throws CardRemoveException
+     */
     public function remove_credit_card_operations_return_true_if_succeed()
     {
         $user = $this->prepareBilledUser();

@@ -2,62 +2,60 @@
 
 namespace Iyzico\IyzipayLaravel\Tests;
 
+use Faker\Generator;
 use Iyzico\IyzipayLaravel\StorableClasses\Address;
 use Iyzico\IyzipayLaravel\StorableClasses\BillFields;
 use Iyzico\IyzipayLaravel\Tests\Models\User;
 use Iyzico\IyzipayLaravel\IyzipayLaravelServiceProvider;
 use Dotenv\Dotenv;
 use Faker\Factory;
-use Orchestra\Database\ConsoleServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Iyzico\IyzipayLaravel\IyzipayLaravelFacade as IyzipayLaravel;
 
 abstract class TestCase extends Orchestra
 {
 
-    protected $faker;
+    protected Generator $faker;
 
     /**
-     * @return void
+     * Set up the test environment.
      */
-    public function setUp()
+    public function setUp(): void
     {
-        $this->faker = Factory::create();
-
         if (file_exists(__DIR__ . '/../.env')) {
-            $dotenv = new Dotenv(__DIR__ . '/../');
+            $dotenv = Dotenv::createImmutable(__DIR__ . '/../');
             $dotenv->load();
         }
 
         parent::setUp();
 
-        $this->loadMigrationsFrom([
-            '--database' => 'testing',
-            '--realpath' => realpath(__DIR__ . '/resources/database/migrations')
-        ]);
+        $this->faker = Factory::create();
+
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
+
+        $this->loadMigrationsFrom(__DIR__ . '/resources/database/migrations');
     }
 
     /**
-     * @param \Illuminate\Foundation\Application $app
-     * @return void
+     * Define environment setup.
      */
-    protected function getEnvironmentSetUp($app)
+    protected function getEnvironmentSetUp($app): void
     {
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', [
-            'driver' => 'sqlite',
-            'database' => ':memory:',
-            'prefix' => '',
+            'driver'   => 'sqlite',
+            'database' => ':memory:', // Fast in-memory database
+            'prefix'   => '',
         ]);
 
-        $app['config']->set('iyzipay.billableModel', 'Iyzico\IyzipayLaravel\Tests\Models\User');
+        // Point to the Test User model
+        $app['config']->set('iyzipay.billableModel', User::class);
     }
 
-    public function getPackageProviders($application)
+    public function getPackageProviders($app): array
     {
         return [
             IyzipayLaravelServiceProvider::class,
-            ConsoleServiceProvider::class
         ];
     }
 
@@ -70,23 +68,25 @@ abstract class TestCase extends Orchestra
 
     protected function prepareBillFields(): BillFields
     {
-        return new BillFields([
-            'first_name' => $this->faker->firstName,
-            'last_name' => $this->faker->lastName,
-            'email' => $this->faker->email,
-            'shipping_address' => new Address([
-                'city' => $this->faker->city,
-                'country' => $this->faker->country,
-                'address' => $this->faker->address
-            ]),
-            'billing_address' => new Address([
-                'city' => $this->faker->city,
-                'country' => $this->faker->country,
-                'address' => $this->faker->address
-            ]),
-            'identity_number' => $this->faker->lexify(str_repeat('?', 11)),
-            'mobile_number' => $this->faker->e164PhoneNumber
-        ]);
+        return new BillFields(
+            firstName:      $this->faker->firstName,
+            lastName:       $this->faker->lastName,
+            email:          $this->faker->email,
+            identityNumber: $this->faker->bothify(string: str_repeat('#', 11)),
+            mobileNumber:   $this->faker->e164PhoneNumber,
+
+            shippingAddress: new Address(
+                city:    $this->faker->city,
+                country: $this->faker->country,
+                address: $this->faker->address
+            ),
+
+            billingAddress: new Address(
+                city:    $this->faker->city,
+                country: $this->faker->country,
+                address: $this->faker->address
+            )
+        );
     }
 
     protected function prepareBilledUser(): User
@@ -110,12 +110,32 @@ abstract class TestCase extends Orchestra
 
     protected function createPlans(): void
     {
-        IyzipayLaravel::plan('aylik-ucretsiz', 'Aylık Ücretisiz');
-        IyzipayLaravel::plan('aylik-standart', 'Aylık Standart')->trialDays(15)->price(20);
-        IyzipayLaravel::plan('aylik-platinum', 'Aylık Platinum')->trialDays(15)->price(40);
-        IyzipayLaravel::plan('yillik-kucuk', 'Yıllık Küçük')->yearly()->trialDays(15)->price(150);
-        IyzipayLaravel::plan('yillik-standart', 'Yıllık Standart')->yearly()->trialDays(15)->price(200);
-        IyzipayLaravel::plan('yillik-platinum', 'Yıllık Platinum')->yearly()->trialDays(15)->price(400);
+        config()->set('iyzipay.plans', [
+            'aylik-ucretsiz' => [
+                'name' => 'Aylık Ücretisiz',
+                'price' => 0,
+                'currency' => 'TRY'
+            ],
+            'aylik-standart' => [
+                'name' => 'Aylık Standart',
+                'price' => 20,
+                'currency' => 'TRY',
+                'trialDays' => 15
+            ],
+            'aylik-platinum' => [
+                'name' => 'Aylık Platinum',
+                'price' => 40,
+                'currency' => 'TRY',
+                'trialDays' => 15
+            ],
+            'yillik-kucuk' => [
+                'name' => 'Yıllık Küçük',
+                'price' => 150,
+                'currency' => 'TRY',
+                'trialDays' => 15,
+                'interval' => 'yearly'
+            ],
+        ]);
     }
 
     protected function correctCardNumbers(): array

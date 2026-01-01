@@ -3,6 +3,7 @@
 namespace Iyzico\IyzipayLaravel\Tests;
 
 use Iyzico\IyzipayLaravel\Exceptions\Fields\BillFieldsException;
+use Iyzico\IyzipayLaravel\StorableClasses\Address;
 use Iyzico\IyzipayLaravel\StorableClasses\BillFields;
 
 class BillTest extends TestCase
@@ -14,9 +15,17 @@ class BillTest extends TestCase
         $user = $this->createUser();
 
         $this->expectException(BillFieldsException::class);
-        $user->bill_fields = new BillFields([
-            'first_name' => $this->faker->firstName
-        ]);
+
+        $user->bill_fields = new BillFields(
+            firstName:      '',
+            lastName:       '',
+            email:          'test@test.com',
+            identityNumber: '12345',
+            mobileNumber:   '555555',
+            shippingAddress: new Address('','',''),
+            billingAddress:  new Address('','','')
+        );
+
         $user->save();
     }
 
