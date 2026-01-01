@@ -4,9 +4,9 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class CreateCreditCardsTable extends Migration
+return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
         Schema::create('credit_cards', function (Blueprint $table) {
             $table->increments('id');
@@ -17,13 +17,12 @@ class CreateCreditCardsTable extends Migration
             $table->unique(['billable_id', 'token']);
             $table->string('bank')->nullable();
             $table->timestamps();
-	        $table->softDeletes();
+            $table->softDeletes();
         });
     }
 
-    public function down()
+    public function down(): void
     {
         Schema::dropIfExists('credit_cards');
     }
-
-}
+};

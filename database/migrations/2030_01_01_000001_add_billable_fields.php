@@ -4,33 +4,29 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class AddBillableFields extends Migration
+return new class extends Migration
 {
-
-    protected $billableTableName;
-
     /**
-     * Our billable model's table name must be set in here for usage of tables.
+     * Helper to get the dynamic table name.
      */
-    public function __construct()
+    protected function getTableName(): string
     {
-        $billableModelName       = config('iyzipay.billableModel');
-        $this->billableTableName = (new $billableModelName)->getTable();
+        $modelClass = config('iyzipay.billableModel', 'App\Models\User');
+        return (new $modelClass)->getTable();
     }
 
-    public function up()
+    public function up(): void
     {
-        Schema::table($this->billableTableName, function (Blueprint $table) {
+        Schema::table($this->getTableName(), function (Blueprint $table) {
             $table->longText('bill_fields')->nullable();
             $table->string('iyzipay_key')->nullable();
         });
     }
 
-    public function down()
+    public function down(): void
     {
-        Schema::table($this->billableTableName, function (Blueprint $table) {
+        Schema::table($this->getTableName(), function (Blueprint $table) {
             $table->dropColumn(['bill_fields', 'iyzipay_key']);
         });
     }
-
-}
+};
