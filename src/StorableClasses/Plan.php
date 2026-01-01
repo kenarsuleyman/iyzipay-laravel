@@ -2,6 +2,7 @@
 
 namespace Iyzico\IyzipayLaravel\StorableClasses;
 
+use Illuminate\Support\Arr;
 use Iyzico\IyzipayLaravel\Exceptions\Fields\PlanFieldsException;
 use Iyzico\IyzipayLaravel\ProductContract;
 use Iyzipay\Model\BasketItemType;
@@ -14,65 +15,65 @@ class Plan extends StorableClass implements ProductContract
      *
      * @var string
      */
-    public $id;
+    public string $id;
 
     /**
      * The plan's displayable name
      *
      * @var string
      */
-    public $name;
+    public string $name;
 
     /**
      * The plan's price.
      *
      * @var integer
      */
-    public $price = 0;
+    public int $price = 0;
 
     /**
      * The plan's interval.
      *
      * @var string
      */
-    public $interval = 'monthly';
+    public string $interval = 'monthly';
 
     /**
      * The number of trial days that come with the plan.
      *
      * @var int
      */
-    public $trialDays = 0;
+    public int $trialDays = 0;
 
     /**
      * The plan's features.
      *
      * @var array
      */
-    public $features = [];
+    public array $features = [];
 
     /**
      * The plan's attributes.
      *
      * @var array
      */
-    public $attributes = [];
+    public array $attributes = [];
 
     /**
      * The plan's currency
      *
      * @var string
      */
-    public $currency = 'TRY';
+    public string $currency = 'TRY';
 
     /**
      * Set the name of the plan.
      *
-     * @param  string $name
+     * @param string $name
      *
      * @return $this
      */
-    public function name($name)
+    public function name(string $name): static
     {
         $this->name = $name;
 
@@ -82,11 +83,11 @@ class Plan extends StorableClass implements ProductContract
     /**
      * Set the id of the plan.
      *
-     * @param  string $id
+     * @param string $id
      *
      * @return $this
      */
-    public function id($id)
+    public function id(string $id): static
     {
         $this->id = $id;
 
@@ -96,11 +97,11 @@ class Plan extends StorableClass implements ProductContract
     /**
      * Set the price of the plan.
      *
-     * @param  string|integer $price
+     * @param integer $price
      *
      * @return $this
      */
-    public function price($price)
+    public function price(int $price): static
     {
         $this->price = $price;
 
@@ -112,7 +113,7 @@ class Plan extends StorableClass implements ProductContract
      *
      * @return $this
      */
-    public function yearly()
+    public function yearly(): static
     {
         $this->interval = 'yearly';
 
@@ -122,11 +123,11 @@ class Plan extends StorableClass implements ProductContract
     /**
      * Specify the number of trial days that come with the plan.
      *
-     * @param  int $trialDays
+     * @param int $trialDays
      *
      * @return $this
      */
-    public function trialDays($trialDays)
+    public function trialDays(int $trialDays): static
     {
         $this->trialDays = $trialDays;
 
@@ -140,7 +141,7 @@ class Plan extends StorableClass implements ProductContract
      *
      * @return $this
      */
-    public function currency($currency)
+    public function currency($currency): static
     {
         $this->currency = $currency;
 
@@ -154,7 +155,7 @@ class Plan extends StorableClass implements ProductContract
      *
      * @return $this
      */
-    public function features(array $features)
+    public function features(array $features): static
     {
         $this->features = $features;
 
@@ -169,9 +170,9 @@ class Plan extends StorableClass implements ProductContract
      *
      * @return mixed
      */
-    public function attribute($key, $default = null)
+    public function attribute($key, $default = null): mixed
     {
-        return \Illuminate\Support\Arr::get($this->attributes, $key, $default);
+        return Arr::get($this->attributes, $key, $default);
     }
 
     /**
@@ -181,7 +182,7 @@ class Plan extends StorableClass implements ProductContract
      *
      * @return $this
      */
-    public function attributes(array $attributes)
+    public function attributes(array $attributes): static
     {
         $this->attributes = array_merge($this->attributes, $attributes);
 
@@ -194,37 +195,37 @@ class Plan extends StorableClass implements ProductContract
         return PlanFieldsException::class;
     }
 
-    public function getKey()
+    public function getKey(): string
     {
         return $this->name;
     }
 
-    public function getKeyName()
+    public function getKeyName(): string
     {
         return 'name';
     }
 
-    public function getName()
+    public function getName(): string
     {
         return $this->name;
     }
 
-    public function getPrice()
+    public function getPrice(): int
     {
         return $this->price;
     }
 
-    public function getCategory()
+    public function getCategory(): string
     {
         return 'Plan';
     }
 
-    public function getType()
+    public function getType(): string
     {
         return BasketItemType::VIRTUAL;
     }
 
-    public function toArray()
+    public function toArray(): array
     {
         return [
             'name' => $this->name,
