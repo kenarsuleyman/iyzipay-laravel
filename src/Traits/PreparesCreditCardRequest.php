@@ -2,6 +2,7 @@
 
 namespace Iyzico\IyzipayLaravel\Traits;
 
+use Iyzico\IyzipayLaravel\DTOs\CardData;
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardRemoveException;
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardSaveException;
 use Iyzico\IyzipayLaravel\Exceptions\Fields\CreditCardFieldsException;
@@ -40,11 +41,11 @@ trait PreparesCreditCardRequest
      * Prepares credit card on iyzipay.
      *
      * @param Payable $payable
-     * @param $attributes
+     * @param CardData|array $attributes
      * @return Card
      * @throws CardSaveException
      */
-    private function createCardOnIyzipay(Payable $payable, $attributes): Card
+    private function createCardOnIyzipay(Payable $payable, CardData|array $attributes): Card
     {
         $cardRequest = $this->createCardRequest($payable, $attributes);
 
@@ -66,10 +67,10 @@ trait PreparesCreditCardRequest
      * Prepare card request class for iyzipay.
      *
      * @param Payable $payable
-     * @param $attributes
+     * @param CardData|array $attributes
      * @return CreateCardRequest
      */
-    private function createCardRequest(Payable $payable, $attributes): CreateCardRequest
+    private function createCardRequest(Payable $payable, CardData|array $attributes): CreateCardRequest
     {
         $cardRequest = new CreateCardRequest();
         $cardRequest->setLocale($this->getLocale());
@@ -120,23 +121,19 @@ trait PreparesCreditCardRequest
     }
 
     /**
-     * Prepares card information class for iyzipay
+     * Prepares card information class for iyzipay.
      *
-     * @param $attributes
+     * @param CardData|array $attributes
      * @return CardInformation
      */
-    private function createCardInformation($attributes): CardInformation
+    private function createCardInformation(CardData|array $attributes): CardInformation
     {
-        $cardInformation = new CardInformation();
-        $cardInformation->setCardAlias($attributes['alias']);
-        $cardInformation->setCardHolderName($attributes['holder']);
-        $cardInformation->setCardNumber($attributes['number']);
-        $cardInformation->setExpireMonth($attributes['month']);
-        $cardInformation->setExpireYear($attributes['year']);
-
-        return $cardInformation;
+        //keeps backward compatibility with old array input
+        if ($attributes instanceof CardData) {
+            return $attributes->toIyzipayModel();
+        }
+        return CardData::fromArray($attributes)->toIyzipayModel();
     }
-
     abstract protected function getLocale(): string;
 
     abstract protected function getOptions(): Options;
