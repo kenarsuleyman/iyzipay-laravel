@@ -22,26 +22,11 @@ use Iyzipay\Model\BkmInitialize;
 trait Payable
 {
 
-    /**
-     * @param $value
-     */
-    public function setBillFieldsAttribute(BillFields $value)
+    public function initializePayable(): void
     {
-        $this->attributes['bill_fields'] = (string)$value;
-    }
-
-    /**
-     * @param $value
-     *
-     * @return object
-     */
-    public function getBillFieldsAttribute($value)
-    {
-        if (empty($value)) {
-            return $value;
-        }
-
-        return (new \JsonMapper())->map(json_decode($value), new BillFields());
+        $this->mergeCasts([
+            'bill_fields' => BillFields::class,
+        ]);
     }
 
     /**
@@ -208,6 +193,7 @@ trait Payable
      */
     public function isBillable(): bool
     {
-        return ! empty($this->bill_fields);
+        // Because of the Cast, $this->bill_fields is now a BillFields Object or null.
+        return $this->bill_fields instanceof BillFields;
     }
 }

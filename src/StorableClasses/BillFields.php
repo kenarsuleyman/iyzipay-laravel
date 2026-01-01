@@ -2,48 +2,62 @@
 
 namespace Iyzico\IyzipayLaravel\StorableClasses;
 
-use Iyzico\IyzipayLaravel\Exceptions\Fields\BillFieldsException;
+use Illuminate\Contracts\Database\Eloquent\Castable;
+use Illuminate\Contracts\Support\Arrayable;
+use Iyzico\IyzipayLaravel\Casts\BillFieldsCast;
+use JsonSerializable;
 
-class BillFields extends StorableClass
+class BillFields implements Castable, Arrayable, JsonSerializable
 {
+    public function __construct(
+        public string $firstName,
+        public string $lastName,
+        public string $email,
+        public string $identityNumber,
+        public string $mobileNumber,
+        public Address $shippingAddress,
+        public Address $billingAddress
+    ) {}
 
     /**
-     * @var string
+     * Define the caster class for this object.
      */
-    public $firstName;
-
-    /**
-     * @var string
-     */
-    public $lastName;
-
-    /**
-     * @var string
-     */
-    public $email;
-
-    /**
-     * @var Address
-     */
-    public $shippingAddress;
-
-    /**
-     * @var Address
-     */
-    public $billingAddress;
-
-    /**
-     * @var string
-     */
-    public $identityNumber;
-
-    /**
-     * @var string
-     */
-    public $mobileNumber;
-
-    protected function getFieldExceptionClass(): string
+    public static function castUsing(array $arguments): string
     {
-        return BillFieldsException::class;
+        return BillFieldsCast::class;
+    }
+
+    /**
+     * Hydrate the object from database array/json.
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            firstName: $data['firstName'] ?? '',
+            lastName:  $data['lastName'] ?? '',
+            email:     $data['email'] ?? '',
+            identityNumber: $data['identityNumber'] ?? '',
+            mobileNumber:   $data['mobileNumber'] ?? '',
+            shippingAddress: Address::fromArray($data['shippingAddress'] ?? []),
+            billingAddress:  Address::fromArray($data['billingAddress'] ?? [])
+        );
+    }
+
+    public function toArray(): array
+    {
+        return [
+            'firstName'       => $this->firstName,
+            'lastName'        => $this->lastName,
+            'email'           => $this->email,
+            'identityNumber'  => $this->identityNumber,
+            'mobileNumber'    => $this->mobileNumber,
+            'shippingAddress' => $this->shippingAddress->toArray(),
+            'billingAddress'  => $this->billingAddress->toArray(),
+        ];
+    }
+
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
     }
 }

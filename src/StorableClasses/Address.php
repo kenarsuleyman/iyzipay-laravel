@@ -2,28 +2,37 @@
 
 namespace Iyzico\IyzipayLaravel\StorableClasses;
 
-use Iyzico\IyzipayLaravel\Exceptions\Fields\AddressFieldsException;
+use Illuminate\Contracts\Support\Arrayable;
+use JsonSerializable;
 
-class Address extends StorableClass
+class Address implements Arrayable, JsonSerializable
 {
+    public function __construct(
+        public string $city,
+        public string $country,
+        public string $address
+    ) {}
 
-    /**
-     * @var string
-     */
-    public $city;
-
-    /**
-     * @var string
-     */
-    public $country;
-
-    /**
-     * @var string
-     */
-    public $address;
-
-    protected function getFieldExceptionClass(): string
+    public static function fromArray(array $data): self
     {
-        return AddressFieldsException::class;
+        return new self(
+            city: $data['city'] ?? '',
+            country: $data['country'] ?? '',
+            address: $data['address'] ?? ''
+        );
+    }
+
+    public function toArray(): array
+    {
+        return [
+            'city'    => $this->city,
+            'country' => $this->country,
+            'address' => $this->address,
+        ];
+    }
+
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
     }
 }
