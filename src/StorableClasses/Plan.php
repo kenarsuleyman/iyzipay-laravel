@@ -233,4 +233,22 @@ class Plan extends StorableClass implements ProductContract
             'currency' => $this->currency
         ];
     }
+
+    /**
+     * Find a plan from the iyzipay config file.
+     *
+     * @param string $key
+     * @return Plan
+     * @throws \Exception
+     */
+    public static function find(string $key): Plan
+    {
+        $config = config("iyzipay.subscription_plans.{$key}");
+
+        if (empty($config)) {
+            throw new \Exception("Subscription plan with key [{$key}] not found in iyzipay configuration.");
+        }
+
+        return new static($config);
+    }
 }
