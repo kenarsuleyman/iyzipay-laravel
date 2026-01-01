@@ -5,6 +5,7 @@ namespace Iyzico\IyzipayLaravel\StorableClasses;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Support\Arrayable;
 use Iyzico\IyzipayLaravel\Casts\BillFieldsCast;
+use Iyzico\IyzipayLaravel\Exceptions\Fields\BillFieldsException;
 use JsonSerializable;
 
 class BillFields implements Castable, Arrayable, JsonSerializable
@@ -17,7 +18,13 @@ class BillFields implements Castable, Arrayable, JsonSerializable
         public string $mobileNumber,
         public Address $shippingAddress,
         public Address $billingAddress
-    ) {}
+    ) {
+        if (empty($firstName) || empty($lastName) || empty($email) || empty($identityNumber)) {
+            throw new BillFieldsException(
+                'Bill fields cannot be empty.'
+            );
+        }
+    }
 
     /**
      * Define the caster class for this object.
