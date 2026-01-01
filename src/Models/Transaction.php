@@ -2,6 +2,7 @@
 
 namespace Iyzico\IyzipayLaravel\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionVoidException;
 use Iyzico\IyzipayLaravel\IyzipayLaravelFacade as IyzipayLaravel;
 use Carbon\Carbon;
@@ -25,13 +26,11 @@ class Transaction extends Model
     ];
 
     protected $casts = [
-        'products' => 'array',
-        'refunds'  => 'array',
-        'error'    => 'array',
-    ];
-
-    protected $dates = [
-        'voided_at'
+        'products'  => 'array',
+        'refunds'   => 'array',
+        'error'     => 'array',
+        'voided_at' => 'datetime',
+        'amount'    => 'decimal:2',
     ];
 
     protected $appends = [
@@ -40,17 +39,18 @@ class Transaction extends Model
 
 	public function scopeSuccess($query)
 	{
-		return $query->where('status', TRUE);
+		return $query->where('status', true);
 	}
 
 	public function scopeFailure($query)
 	{
-		return $query->where('status', FALSE);
+		return $query->where('status', false);
 	}
 
     public function billable(): BelongsTo
     {
-        return $this->belongsTo(config('iyzipay.billableModel'), 'billable_id');
+        $modelClass = config('iyzipay.billableModel', 'App\Models\User');
+        return $this->belongsTo($modelClass, 'billable_id');
     }
 
     public function creditCard(): BelongsTo
@@ -63,6 +63,9 @@ class Transaction extends Model
         return $this->belongsTo(Subscription::class);
     }
 
+    /**
+     * @throws TransactionVoidException
+     */
     public function cancel(): Transaction
     {
         if ($this->created_at < Carbon::today()->startOfDay()) {
@@ -72,17 +75,24 @@ class Transaction extends Model
         return IyzipayLaravel::cancel($this);
     }
 
+    /**
+     * @throws TransactionVoidException
+     */
     public function refund(): Transaction
     {
         return IyzipayLaravel::cancel($this);
     }
 
-    public function getRefundedAmountAttribute()
+    protected function refundedAmount(): Attribute
     {
-    	if(empty($this->refunds)) {
-    		return 0;
-	    }
+        return Attribute::make(
+            get: function (): float {
+                if (empty($this->refunds)) {
+                    return 0.0;
+                }
 
-	    return array_sum( array_column( $this->refunds, 'amount' ) );
+                return (float) array_sum(array_column($this->refunds, 'amount'));
+            }
+        );
     }
 }
