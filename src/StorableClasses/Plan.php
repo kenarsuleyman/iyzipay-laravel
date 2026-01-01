@@ -171,7 +171,7 @@ class Plan extends StorableClass implements ProductContract
      */
     public function attribute($key, $default = null)
     {
-        return array_get($this->attributes, $key, $default);
+        return \Illuminate\Support\Arr::get($this->attributes, $key, $default);
     }
 
     /**

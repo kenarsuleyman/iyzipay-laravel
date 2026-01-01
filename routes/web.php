@@ -1,10 +1,13 @@
 <?php
+
 use Illuminate\Support\Facades\Route;
+use Iyzico\IyzipayLaravel\Controller\CallbackController;
 
-Route::group( ['middleware' => 'web'], function() {
+Route::middleware('web')->group(function () {
 
-	Route::any( '/iyzipay/threeds/callback', 'Iyzico\IyzipayLaravel\Controller\CallbackController@threedsCallback' )
-	     ->name( 'threeds.callback' );
-	Route::any( '/iyzipay/bkm/callback', 'Iyzico\IyzipayLaravel\Controller\CallbackController@bkmCallback' )
-	     ->name( 'bkm.callback' );
+    Route::any('/iyzipay/threeds/callback', [CallbackController::class, 'threedsCallback'])
+        ->name('threeds.callback');
+
+    Route::any('/iyzipay/bkm/callback', [CallbackController::class, 'bkmCallback'])
+        ->name('bkm.callback');
 });

@@ -1,52 +1,52 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: can
- * Date: 27/10/2017
- * Time: 01:33
- */
 
 namespace Iyzico\IyzipayLaravel\Controller;
 
-use App\Http\Controllers\Controller;
+use Illuminate\Routing\Controller; // ✅ Changed from App\Http\Controllers\Controller
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Iyzico\IyzipayLaravel\IyzipayLaravel;
-use Illuminate\Support\Facades\Redirect;
-use Iyzico\IyzipayLaravel\Exceptions\Threeds\ThreedsCallbackException;
 
 class CallbackController extends Controller
 {
+    public function threedsCallback(Request $request): RedirectResponse
+    {
+        // Use 'input' method instead of magic property access for better safety
+        if ($request->input('status') !== 'success') {
 
-	public function threedsCallback (Request $request)
-	{
+            // Resolve the service using the container
+            app(IyzipayLaravel::class)->cancelThreedsPayment($request);
 
-		if($request->status != 'success') {
-			app( IyzipayLaravel::class )->cancelThreedsPayment( $request );
-			return redirect()->route( 'iyzico.callback' )
-			                 ->with( ['request' => $request->all()] );
-		}
+            return redirect()->route('iyzico.callback')
+                ->with(['request' => $request->all()]);
+        }
 
-		$transaction = app( IyzipayLaravel::class )->threedsPayment( $request );
+        $transaction = app(IyzipayLaravel::class)->threedsPayment($request);
 
-		return redirect()->route( 'iyzico.callback' )
-		                 ->with( ['request' => $request->all(), 'transaction' => $transaction] );
-	}
+        return redirect()->route('iyzico.callback')
+            ->with([
+                'request'     => $request->all(),
+                'transaction' => $transaction
+            ]);
+    }
 
+    public function bkmCallback(Request $request)
+    {
+        // ⚠️ Debug code detected. Ensure this is handled before production.
+        dd($request->all());
 
-	public function bkmCallback (Request $request)
-	{
+        /* // Uncomment and update when BKM logic is ready:
 
-		dd($request->all());
-//		if($request->status != 'success') {
-//			app( IyzipayLaravel::class )->cancelThreedsPayment( $request );
-//			return redirect()->route( 'iyzico.callback' )
-//			                 ->with( ['request' => $request->all()] );
-//		}
-//
-//		$transaction = app( IyzipayLaravel::class )->threedsPayment( $request );
-//
-//		return redirect()->route( 'iyzico.callback' )
-//		                 ->with( ['request' => $request->all(), 'transaction' => $transaction] );
-	}
+        if ($request->input('status') !== 'success') {
+           app(IyzipayLaravel::class)->cancelThreedsPayment($request);
+           return redirect()->route('iyzico.callback')
+                            ->with(['request' => $request->all()]);
+        }
 
+        $transaction = app(IyzipayLaravel::class)->threedsPayment($request);
+
+        return redirect()->route('iyzico.callback')
+                         ->with(['request' => $request->all(), 'transaction' => $transaction]);
+        */
+    }
 }

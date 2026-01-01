@@ -21,51 +21,61 @@
       "email": "can@istanbay.com",
       "homepage": "https://istanbay.com",
       "role": "CTO"
-    }
-  ],
-  "require": {
-    "php": "~7.0|~7.1",
-    "doctrine/dbal": "^2.5",
-    "iyzico/iyzipay-php": "^2.0",
-    "netresearch/jsonmapper": "^1.1"
-  },
-  "require-dev": {
-    "phpunit/phpunit" : "~4.0||~5.0",
-    "squizlabs/php_codesniffer": "^2.3",
-    "orchestra/testbench": "~3.0",
-    "orchestra/database": "3.4.x@dev",
-    "vlucas/phpdotenv": "~2.0",
-    "fzaninotto/faker": "~1.6"
-  },
-  "autoload": {
-    "psr-4": {
-      "Iyzico\\IyzipayLaravel\\": "src"
-    }
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "Iyzico\\IyzipayLaravel\\Tests\\": "tests"
-    }
-  },
-  "scripts": {
-    "test": "phpunit",
-    "check-style": "phpcs -p --standard=PSR2 --runtime-set ignore_errors_on_exit 1 --runtime-set ignore_warnings_on_exit 1 src tests",
-    "fix-style": "phpcbf -p --standard=PSR2 --runtime-set ignore_errors_on_exit 1 --runtime-set ignore_warnings_on_exit 1 src tests"
-  },
-  "extra": {
-    "branch-alias": {
-      "dev-master": "1.0-dev"
     },
-    "laravel": {
-      "providers": [
-        "Iyzico\\IyzipayLaravel\\IyzipayLaravelServiceProvider"
-      ],
-      "aliases": {
-        "IyzipayLaravel": "Iyzico\\IyzipayLaravel\\IyzipayLaravelFacade"
+      {
+          "name": "Süleyman Kenar",
+          "email": "suleyman@kenar.net",
+          "role": "Contributor"
       }
-    }
-  },
-  "config": {
-    "sort-packages": true
-  }
+  ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "iyzico/iyzipay-php": "^2.0",
+        "doctrine/dbal": "^3.0|^4.0",
+        "netresearch/jsonmapper": "^4.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0",
+        "phpunit/phpunit": "^10.5|^11.0",
+        "fakerphp/faker": "^1.23",
+        "mockery/mockery": "^1.6",
+        "vlucas/phpdotenv": "^5.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Iyzico\\IyzipayLaravel\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Iyzico\\IyzipayLaravel\\Tests\\": "tests"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "check-style": "phpcs -p --standard=PSR12 --runtime-set ignore_errors_on_exit 1 --runtime-set ignore_warnings_on_exit 1 src tests",
+        "fix-style": "phpcbf -p --standard=PSR12 --runtime-set ignore_errors_on_exit 1 --runtime-set ignore_warnings_on_exit 1 src tests"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "2.0-dev"
+        },
+        "laravel": {
+            "providers": [
+                "Iyzico\\IyzipayLaravel\\IyzipayLaravelServiceProvider"
+            ],
+            "aliases": {
+                "IyzipayLaravel": "Iyzico\\IyzipayLaravel\\IyzipayLaravelFacade"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }
