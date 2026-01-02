@@ -2,12 +2,15 @@
 
 namespace Iyzico\IyzipayLaravel\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Iyzico\IyzipayLaravel\Casts\PlanCast;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Iyzico\IyzipayLaravel\Enums\SubscriptionStatus;
 
 class Subscription extends Model
 {
@@ -27,16 +30,65 @@ class Subscription extends Model
         'plan'               => PlanCast::class,
     ];
 
-    public function scopeActive($query)
+    protected function status(): Attribute
     {
-        return $query->whereNull('canceled_at')
-                     ->where('next_charge_at', '>=', Carbon::now());
+        return Attribute::make(
+            get: function (): SubscriptionStatus {
+                $now = Carbon::now();
+
+                if ($this->canceled_at !== null) {
+                    if ($this->canceled_at > $now) {
+                        return SubscriptionStatus::PENDING_CANCELLATION;
+                    }
+                    return SubscriptionStatus::CANCELED;
+                }
+
+                if ($this->next_charge_at !== null) {
+                    if ($this->next_charge_at >= $now) {
+                        return SubscriptionStatus::ACTIVE;
+                    }
+                    return SubscriptionStatus::OVERDUE;
+                }
+
+                return SubscriptionStatus::CANCELED;
+            }
+        );
     }
 
-    public function scopeNotPaid($query)
+    /**
+     * Get subscriptions that are fully active and renewing.
+     */
+    public function scopeActive(Builder $query): void
     {
-        return $query->whereNull('canceled_at')
-                     ->where('next_charge_at', '<', Carbon::now());
+        $query->whereNull('canceled_at')
+            ->where('next_charge_at', '>=', Carbon::now());
+    }
+
+    /**
+     * Get subscriptions that have been canceled but are still in the grace period.
+     */
+    public function scopePendingCancellation(Builder $query): void
+    {
+        $query->whereNotNull('canceled_at')
+            ->where('canceled_at', '>', Carbon::now());
+    }
+
+    /**
+     * Get subscriptions that are fully canceled (grace period ended).
+     */
+    public function scopeCanceled(Builder $query): void
+    {
+        $query->whereNotNull('canceled_at')
+            ->where('canceled_at', '<=', Carbon::now());
+    }
+
+    /**
+     * Get subscriptions that are active but payment failed/missed.
+     */
+    public function scopeNotPaid(Builder $query): void
+    {
+        $query->whereNull('canceled_at')
+            ->where('next_charge_at', '<', Carbon::now());
     }
 
     public function owner(): BelongsTo
@@ -50,17 +102,32 @@ class Subscription extends Model
         return $this->hasMany(Transaction::class);
     }
 
+    /**
+     * Graceful Cancellation: User keeps access until the end of the paid period.
+     */
     public function cancel(): self
     {
-        $this->canceled_at = Carbon::now();
+        $this->canceled_at = $this->next_charge_at ?? Carbon::now();
+        $this->next_charge_at = null;
         $this->save();
+        return $this;
+    }
 
+    /**
+     * Immediate Cancellation: User loses access instantly.
+     * Useful for admins or fraud prevention.
+     */
+    public function forceCancel(): self
+    {
+        $this->canceled_at = Carbon::now();
+        $this->next_charge_at = null;
+        $this->save();
         return $this;
     }
 
     public function canceled(): bool
     {
-        return ! empty($this->canceled_at);
+        return ! empty($this->canceled_at) && $this->canceled_at <= Carbon::now();
     }
 
 }
