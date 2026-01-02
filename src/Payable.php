@@ -2,6 +2,7 @@
 
 namespace Iyzico\IyzipayLaravel;
 
+use Iyzico\IyzipayLaravel\DTOs\CardData;
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardRemoveException;
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardSaveException;
 use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionSaveException;
@@ -11,10 +12,8 @@ use Iyzico\IyzipayLaravel\Models\Transaction;
 use Iyzico\IyzipayLaravel\StorableClasses\BillFields;
 use Iyzico\IyzipayLaravel\StorableClasses\Plan;
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Route;
 use Iyzico\IyzipayLaravel\IyzipayLaravelFacade as IyzipayLaravel;
 use Iyzipay\Model\ThreedsInitialize;
 use Iyzipay\Model\BkmInitialize;
@@ -62,11 +61,11 @@ trait Payable
     /**
      * Add credit card for payable
      *
-     * @param array $attributes
+     * @param CardData|array $attributes
      * @return CreditCard
      * @throws CardSaveException
      */
-    public function addCreditCard(array $attributes = []): CreditCard
+    public function addCreditCard(CardData|array $attributes = []): CreditCard
     {
         return IyzipayLaravel::addCreditCard($this, $attributes);
     }
