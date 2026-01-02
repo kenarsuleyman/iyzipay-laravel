@@ -5,7 +5,7 @@ return [
 	'apiKey'        => env( 'IYZIPAY_API_KEY', '' ),
 	'secretKey'     => env( 'IYZIPAY_SECRET_KEY', '' ),
 	'billableModel' => 'App\User',
-    'plans' => [
+    'subscription_plans' => [
         'gold-monthly' => [
             'name'       => 'Gold Membership',
             'price'      => 100,             // Price in base currency unit (e.g., 100 TRY)
