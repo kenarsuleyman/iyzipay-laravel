@@ -12,7 +12,12 @@ class CreditCard extends Model
 	use SoftDeletes;
 
     protected $fillable = [
-        'alias', 'number', 'token', 'bank'
+        'alias',
+        'number',
+        'token',
+        'bank',
+        'last_four',
+        'association',
     ];
 
     public function owner(): BelongsTo

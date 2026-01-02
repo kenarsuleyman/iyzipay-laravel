@@ -78,10 +78,12 @@ class IyzipayLaravel
 		$card = $this->createCardOnIyzipay( $payable, $attributes );
 
 		$creditCardModel = new CreditCard( [
-			                                   'alias'  => $card->getCardAlias(),
-			                                   'number' => $card->getBinNumber(),
-			                                   'token'  => $card->getCardToken(),
-			                                   'bank'   => $card->getCardBankName()
+			                                   'alias'      => $card->getCardAlias(),
+			                                   'number'     => $card->getBinNumber(),
+                                               'last_four'  => $card->getLastFourDigits(),
+			                                   'token'      => $card->getCardToken(),
+                                               'association'=> $card->getCardAssociation(),
+			                                   'bank'       => $card->getCardBankName()
 		                                   ] );
 		$payable->creditCards()->save( $creditCardModel );
 
