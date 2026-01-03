@@ -29,14 +29,8 @@ class IyzipayLaravelServiceProvider extends ServiceProvider
             $this->loadMigrationsFrom($migrationPath);
         }
 
-        // Scheduler Logic
-        // We check if running in console first to prevent instantiating Schedule in HTTP requests
+        // Register the command so it can be called manually or scheduled by the user
         if ($this->app->runningInConsole()) {
-            $this->app->booted(function () {
-                $schedule = $this->app->make(Schedule::class);
-                $schedule->command('iyzipay:subscription_charge')->daily();
-            });
-
             $this->commands([
                 SubscriptionChargeCommand::class
             ]);
