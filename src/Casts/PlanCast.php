@@ -18,10 +18,14 @@ class PlanCast implements CastsAttributes
             return null;
         }
 
-        $data = json_decode($value, true);
+        $data = is_string($value) ? json_decode($value, true) : $value;
+
+        if (! is_array($data)) {
+            return null;
+        }
 
         // Uses the Plan/StorableClass constructor which accepts an array
-        return new Plan(is_array($data) ? $data : []);
+        return Plan::fromArray($data);
     }
 
     /**
@@ -34,6 +38,10 @@ class PlanCast implements CastsAttributes
         }
 
         if ($value instanceof Plan || is_array($value)) {
+            return json_encode($value);
+        }
+
+        if (is_array($value)) {
             return json_encode($value);
         }
 
