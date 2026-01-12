@@ -4,6 +4,8 @@ namespace Iyzico\IyzipayLaravel;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
+use Iyzico\IyzipayLaravel\Commands\PublishUpgradeMigrationCommand;
+use Iyzico\IyzipayLaravel\Commands\ReverseVerificationTransactions;
 use Iyzico\IyzipayLaravel\Commands\SubscriptionChargeCommand;
 
 class IyzipayLaravelServiceProvider extends ServiceProvider
@@ -23,6 +25,10 @@ class IyzipayLaravelServiceProvider extends ServiceProvider
             $migrationPath => database_path('migrations')
         ], 'iyzipay-migrations');
 
+        $this->publishes([
+            __DIR__ . '/../database/migrations/upgrade' => database_path('migrations')
+        ], 'iyzipay-upgrade');
+
         $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
 
         if (config('iyzipay.load_migrations', true)) {
@@ -32,7 +38,9 @@ class IyzipayLaravelServiceProvider extends ServiceProvider
         // Register the command so it can be called manually or scheduled by the user
         if ($this->app->runningInConsole()) {
             $this->commands([
-                SubscriptionChargeCommand::class
+                SubscriptionChargeCommand::class,
+                ReverseVerificationTransactions::class,
+                PublishUpgradeMigrationCommand::class,
             ]);
         }
     }
