@@ -7,8 +7,10 @@ use Iyzico\IyzipayLaravel\Exceptions\Bkm\BkmInitializeException;
 use Iyzico\IyzipayLaravel\Exceptions\Threeds\ThreedsCreateException;
 use Iyzico\IyzipayLaravel\Exceptions\Threeds\ThreedsInitializeException;
 use Iyzico\IyzipayLaravel\Exceptions\Fields\TransactionFieldsException;
+use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionRefundException;
 use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionSaveException;
 use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionVoidException;
+use Iyzico\IyzipayLaravel\IyzipayLaravel;
 use Iyzico\IyzipayLaravel\Models\CreditCard;
 use Iyzico\IyzipayLaravel\Models\Transaction;
 use Iyzico\IyzipayLaravel\PayableContract as Payable;
@@ -26,11 +28,13 @@ use Iyzipay\Model\Payment;
 use Iyzipay\Model\PaymentCard;
 use Iyzipay\Model\PaymentChannel;
 use Iyzipay\Model\PaymentGroup;
+use Iyzipay\Model\Refund;
 use Iyzipay\Model\ThreedsInitialize;
 use Iyzipay\Model\ThreedsPayment;
 use Iyzipay\Options;
 use Iyzipay\Request\CreateCancelRequest;
 use Iyzipay\Request\CreatePaymentRequest;
+use Iyzipay\Request\CreateRefundRequest;
 use Iyzipay\Request\CreateThreedsPaymentRequest;
 use Iyzipay\Request\CreateBkmInitializeRequest;
 
@@ -70,38 +74,48 @@ trait PreparesTransactionRequest
     }
 
     /**
-     * Creates transaction on iyzipay.
-     *
-     * @param Payable $payable
-     * @param CreditCard $creditCard
-     * @param array $attributes
-     * @param bool $subscription
-     *
-     * @return Payment
-     * @throws TransactionSaveException
+     * Prepares and sends the generic Payment Request (Non-3DS).
      */
-    protected function createTransactionOnIyzipay(
+    protected function createPaymentOnIyzipay(
         Payable $payable,
         CreditCard $creditCard,
-        array $attributes,
-        $subscription = false
-    ): Payment {
-        $this->validateTransactionFields($attributes);
-        $paymentRequest = $this->createPaymentRequest($attributes, $subscription);
-        $paymentRequest->setPaymentCard($this->preparePaymentCard($payable, $creditCard));
-        $paymentRequest->setBuyer($this->prepareBuyer($payable));
-        $paymentRequest->setShippingAddress($this->prepareAddress($payable, 'shippingAddress'));
-        $paymentRequest->setBillingAddress($this->prepareAddress($payable, 'billingAddress'));
-        $paymentRequest->setBasketItems($this->prepareBasketItems($attributes['products']));
+        Transaction $transaction
+    ): Payment
+    {
+        // 1. Setup Request
+        $request = new \Iyzipay\Request\CreatePaymentRequest();
+        $request->setLocale(IyzipayLaravel::getLocale());
+        $request->setConversationId($transaction->id);
+        $request->setPrice($transaction->amount);
+        $request->setPaidPrice($transaction->amount);
+        $request->setCurrency($transaction->currency);
+        $request->setInstallment($transaction->installment ?? 1);
+        $request->setBasketId($transaction->id);
+        $request->setPaymentChannel(\Iyzipay\Model\PaymentChannel::WEB);
 
+        // 2. Dynamic Payment Group (Subscription vs Product)
+        // If the transaction is linked to a subscription, flag it.
+        $paymentGroup = $transaction->subscription_id
+            ? PaymentGroup::SUBSCRIPTION
+            : PaymentGroup::PRODUCT;
+
+        $request->setPaymentGroup($paymentGroup);
+
+        // 3. Set Entities
+        $request->setPaymentCard($this->preparePaymentCard($payable, $creditCard));
+        $request->setBuyer($this->prepareBuyer($payable));
+        $request->setShippingAddress($this->prepareAddress($payable, 'shippingAddress'));
+        $request->setBillingAddress($this->prepareAddress($payable, 'billingAddress'));
+        $request->setBasketItems($this->prepareBasketItems($transaction->products));
+
+        // 4. Call Iyzico API
         try {
-            $payment = Payment::create($paymentRequest, $this->getOptions());
+            $payment = Payment::create($request, $this->getOptions());
         } catch (\Exception $e) {
-            throw new TransactionSaveException();
+            throw new TransactionSaveException('Connection Error: ' . $e->getMessage());
         }
 
-        unset($paymentRequest);
-
+        // 5. Validate Iyzico Result
         if ($payment->getStatus() != 'success') {
             throw new TransactionSaveException($payment->getErrorMessage());
         }
@@ -122,25 +136,42 @@ trait PreparesTransactionRequest
     protected function initializeThreedsOnIyzipay(
         Payable $payable,
         CreditCard $creditCard,
-        array $attributes,
-        $subscription = false
+        Transaction $transaction,
+        string $callbackUrl
     ): ThreedsInitialize {
-        $this->validateTransactionFields($attributes);
-        $paymentRequest = $this->createPaymentRequest($attributes, $subscription);
-        $paymentRequest->setPaymentCard($this->preparePaymentCard($payable, $creditCard));
-        $paymentRequest->setBuyer($this->prepareBuyer($payable));
-        $paymentRequest->setShippingAddress($this->prepareAddress($payable, 'shippingAddress'));
-        $paymentRequest->setBillingAddress($this->prepareAddress($payable, 'billingAddress'));
-        $paymentRequest->setBasketItems($this->prepareBasketItems($attributes['products']));
-        session()->flash('iyzico.products', $attributes['products']);
+
+        $request = new CreatePaymentRequest();
+        $request->setLocale(IyzipayLaravel::getLocale());
+        $request->setConversationId($transaction->id);
+        $request->setPrice($transaction->amount);
+        $request->setPaidPrice($transaction->amount);
+        $request->setCurrency($transaction->currency);
+
+        $installment = $transaction->installment ?? 1;
+        $request->setInstallment($installment);
+
+        $request->setBasketId($transaction->id);
+        $request->setPaymentChannel(PaymentChannel::WEB);
+        $request->setCallbackUrl($callbackUrl);
+
+        $paymentGroup = $transaction->subscription_id
+            ? PaymentGroup::SUBSCRIPTION
+            : PaymentGroup::PRODUCT;
+
+        $request->setPaymentGroup($paymentGroup);
+
+        // Set Entity Details
+        $request->setPaymentCard($this->preparePaymentCard($payable, $creditCard));
+        $request->setBuyer($this->prepareBuyer($payable));
+        $request->setShippingAddress($this->prepareAddress($payable, 'shippingAddress'));
+        $request->setBillingAddress($this->prepareAddress($payable, 'billingAddress'));
+        $request->setBasketItems($this->prepareBasketItems($transaction->products));
 
         try {
-            $threedsInitialize = ThreedsInitialize::create($paymentRequest, $this->getOptions());
+            $threedsInitialize = ThreedsInitialize::create($request, $this->getOptions());
         } catch (\Exception $e) {
-            throw new ThreedsInitializeException();
+            throw new ThreedsInitializeException('Iyzico Connection Error: ' . $e->getMessage());
         }
-
-        unset($paymentRequest);
 
         if ($threedsInitialize->getStatus() != 'success') {
             throw new ThreedsInitializeException($threedsInitialize->getErrorMessage());
@@ -196,10 +227,32 @@ trait PreparesTransactionRequest
             throw new TransactionVoidException();
         }
 
-        unset($cancelRequest);
-
         if ($cancel->getStatus() != 'success') {
             throw new TransactionVoidException($cancel->getErrorMessage());
+        }
+
+        return $cancel;
+    }
+
+
+    /**
+     * @param Transaction $transaction
+     * @param float $amountToRefund
+     * @return Refund
+     * @throws TransactionRefundException
+     */
+    protected function createRefundOnIyzipay(Transaction $transaction, float $amountToRefund): Refund
+    {
+        $refundRequest = $this->prepareRefundRequest($transaction, $amountToRefund);
+
+        try {
+            $cancel = Refund::create($refundRequest, $this->getOptions());
+        } catch (\Exception $e) {
+            throw new TransactionRefundException();
+        }
+
+        if ($cancel->getStatus() != 'success') {
+            throw new TransactionRefundException($cancel->getErrorMessage());
         }
 
         return $cancel;
@@ -299,6 +352,24 @@ trait PreparesTransactionRequest
         $cancelRequest->setLocale($this->getLocale());
 
         return $cancelRequest;
+    }
+
+    /**
+     * Prepares cancel request class for iyzipay
+     *
+     * @param Transaction $transaction
+     * @param float $amountToRefund
+     * @return CreateRefundRequest
+     */
+    private function prepareRefundRequest(Transaction $transaction, float $amountToRefund): CreateRefundRequest
+    {
+        $refundRequest = new CreateRefundRequest();
+        $refundRequest->setPaymentTransactionId($transaction->iyzipay_transaction_id);
+        $refundRequest->setPrice($amountToRefund);
+        $refundRequest->setIp(request()->ip());
+        $refundRequest->setLocale($this->getLocale());
+
+        return $refundRequest;
     }
 
     /**

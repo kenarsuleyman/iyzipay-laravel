@@ -55,6 +55,36 @@ class Subscription extends Model
         );
     }
 
+    protected function trialEndsAt(): Attribute
+    {
+        return Attribute::make(
+            get: function (): ?Carbon {
+                $trialDays = $this->plan?->trialDays ?? 0;
+
+                if ($trialDays <= 0) {
+                    return null;
+                }
+
+                return $this->created_at->copy()->addDays($trialDays);
+            }
+        );
+    }
+
+    protected function isTrial(): Attribute
+    {
+        return Attribute::make(
+            get: function (): bool {
+                $trialEndsAt = $this->trial_ends_at;
+
+                if ($trialEndsAt === null) {
+                    return false;
+                }
+
+                return Carbon::now()->lt($trialEndsAt);
+            }
+        );
+    }
+
     /**
      * Get subscriptions that are fully active and renewing.
      */

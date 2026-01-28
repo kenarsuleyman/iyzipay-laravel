@@ -33,6 +33,7 @@ return new class extends Migration
             $table->string('bank')->nullable();
             $table->string('last_four', 4)->nullable();
             $table->string('association')->nullable();
+            $table->boolean('verified')->default(false);
             $table->unique(['billable_id', 'token']);
             $table->timestamps();
             $table->softDeletes();

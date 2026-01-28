@@ -2,7 +2,12 @@
 
 namespace Iyzico\IyzipayLaravel\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Iyzico\IyzipayLaravel\Casts\ProductCollectionCast;
+use Iyzico\IyzipayLaravel\Enums\TransactionStatus;
+use Iyzico\IyzipayLaravel\Enums\TransactionType;
+use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionRefundException;
 use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionVoidException;
 use Iyzico\IyzipayLaravel\IyzipayLaravelFacade as IyzipayLaravel;
 use Carbon\Carbon;
@@ -19,14 +24,20 @@ class Transaction extends Model
         'products',
         'refunds',
         'iyzipay_key',
+        'iyzipay_transaction_id',
         'voided_at',
         'currency',
         'status',
-        'error'
+        'error',
+        'refunded_at',
+        'type',
+        'installment'
     ];
 
     protected $casts = [
-        'products'  => 'array',
+        'status'    => TransactionStatus::class,
+        'type'      => TransactionType::class,
+        'products'  => ProductCollectionCast::class,
         'refunds'   => 'array',
         'error'     => 'array',
         'voided_at' => 'datetime',
@@ -37,14 +48,14 @@ class Transaction extends Model
         'refunded_amount'
     ];
 
-	public function scopeSuccess($query)
+	public function scopeSuccess(Builder $query): void
 	{
-		return $query->where('status', true);
+		$query->where('status', TransactionStatus::SUCCESS->value);
 	}
 
-	public function scopeFailure($query)
+	public function scopeFailure(Builder $query): void
 	{
-		return $query->where('status', false);
+		$query->where('status', TransactionStatus::FAILED->value);
 	}
 
     public function billable(): BelongsTo
@@ -76,11 +87,18 @@ class Transaction extends Model
     }
 
     /**
-     * @throws TransactionVoidException
+     * Refund this transaction (Full or Partial).
+     *
+     * @param float|null $amount The amount to refund. If null, refunds the full remaining balance.
+     *
+     * @return Transaction The updated transaction instance with refund details.
+     *
+     * @throws \InvalidArgumentException If the amount is <= 0 or exceeds the remaining balance.
+     * @throws TransactionRefundException If the refund operation fails at the payment gateway.
      */
-    public function refund(): Transaction
+    public function refund(?float $amount = null): Transaction
     {
-        return IyzipayLaravel::cancel($this);
+        return IyzipayLaravel::refund($this, $amount);
     }
 
     protected function refundedAmount(): Attribute

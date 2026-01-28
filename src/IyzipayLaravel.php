@@ -3,12 +3,15 @@
 namespace Iyzico\IyzipayLaravel;
 
 use Illuminate\Http\Request;
+use InvalidArgumentException;
 use Iyzico\IyzipayLaravel\DTOs\CardData;
+use Iyzico\IyzipayLaravel\Enums\TransactionStatus;
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardSaveException;
 use Iyzico\IyzipayLaravel\Exceptions\Card\PayableMustHaveCreditCardException;
 use Iyzico\IyzipayLaravel\Exceptions\Fields\BillFieldsException;
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardRemoveException;
 use Iyzico\IyzipayLaravel\Exceptions\Fields\CreditCardFieldsException;
+use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionRefundException;
 use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionSaveException;
 use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionVoidException;
 use Iyzico\IyzipayLaravel\Exceptions\Iyzipay\IyzipayAuthenticationException;
@@ -32,7 +35,6 @@ use Iyzipay\Model\BkmInitialize;
 use Iyzipay\Model\ThreedsInitialize;
 use Iyzipay\Options;
 use Iyzipay\Model\Locale;
-use Iyzipay\Model\PaymentResource;
 use Iyzico\IyzipayLaravel\PayableContract as Payable;
 
 class IyzipayLaravel
@@ -83,6 +85,7 @@ class IyzipayLaravel
                                                'last_four'  => $card->getLastFourDigits(),
 			                                   'token'      => $card->getCardToken(),
                                                'association'=> $card->getCardAssociation(),
+                                               'verified'   => false,
 			                                   'bank'       => $card->getCardBankName()
 		                                   ] );
 		$payable->creditCards()->save( $creditCardModel );
@@ -112,133 +115,152 @@ class IyzipayLaravel
 	}
 
 
+    /**
+     * Process a Non-3DS Payment (Direct Charge).
+     * * @param Transaction $transaction
+     * * @return Transaction
+     * @throws TransactionSaveException
+     */
+    public function singlePayment(Transaction $transaction): Transaction
+    {
+        // 1. Load Relations
+        $user = $transaction->billable;
+        $creditCard = $transaction->creditCard;
+
+        // 2. Validations
+        $this->validateBillable($user);
+        $this->validateCreditCard($user, $creditCard);
+
+        try {
+            // 3. Prepare & Send Request (Logic extracted below)
+            $payment = $this->createPaymentOnIyzipay($user, $creditCard, $transaction);
+
+            // 4. Success Handling
+            // Update the transaction with the official Iyzico ID and status
+            $transaction->iyzipay_key = $payment->getPaymentId();
+            $transaction->status      = TransactionStatus::SUCCESS;
+            $transaction->error       = null; // Clear previous errors if any
+            $transaction->save();
+
+            // Mark card as verified after any successful payment
+            if ($creditCard && !$creditCard->verified) {
+                $creditCard->verified = true;
+                $creditCard->save();
+            }
+
+            return $transaction;
+
+        } catch (\Exception $e) {
+            // 5. Failure Handling
+            $transaction->status = TransactionStatus::FAILED;
+
+            // Save the error message (or full JSON if you prefer)
+            $transaction->error = [
+                'message' => $e->getMessage(),
+                'card'    => $creditCard->number
+            ];
+
+            $transaction->save();
+
+            // Re-throw so the caller/scheduler knows it failed
+            throw new TransactionSaveException($e->getMessage());
+        }
+    }
+
+
+    public function initializeThreeds(Transaction $transaction): ThreedsInitialize
+    {
+        // 1. Load Relations
+        $user = $transaction->billable;
+        $creditCard = $transaction->creditCard;
+
+        // 2. Validations
+        $this->validateBillable($user);
+        $this->validateCreditCard($user, $creditCard);
+
+        $callback = route('threeds.callback');
+
+        try {
+            // 3. Prepare Iyzico Request Logic (Extracted to keep this clean)
+            // Pass $transaction to use its amount, currency, and ID.
+            $threedsInitialize = $this->initializeThreedsOnIyzipay(
+                $user,
+                $creditCard,
+                $transaction,
+                $callback
+            );
+
+            // 4. Update Transaction with Iyzico Key
+            // We now have the 'paymentId' or 'conversationId' from Iyzico to link them.
+            $transaction->iyzipay_key = $threedsInitialize->getPaymentId();
+            // Do NOT set status to SUCCESS yet. That happens in the callback.
+            $transaction->save();
+
+            return $threedsInitialize;
+
+        } catch (\Exception $e) {
+            // 5. Handle Errors Immediately
+            $transaction->status = TransactionStatus::FAILED;
+            $transaction->error = ['message' => $e->getMessage()];
+            $transaction->save();
+
+            throw $e; // Re-throw so the Controller can show the error
+        }
+    }
+
 	/**
-	 * @param PayableContract $payable
-	 * @param Collection      $products
-	 * @param                 $currency
-	 * @param                 $installment
-	 * @param bool            $subscription
+	 * Handle the 3DS callback after bank verification.
 	 *
-	 * @return Transaction $transactionModel
-	 * @throws TransactionSaveException
-	 */
-	public function singlePayment (
-		Payable $payable, Collection $products, CreditCard $creditCard, $currency, $installment, $subscription = FALSE
-	): Transaction {
-
-		// @todo: products variable can be a model
-
-		$this->validateBillable( $payable );
-		$this->validateHasCreditCard( $payable );
-		$this->validateCreditCard( $payable, $creditCard );
-
-		$messages = []; // @todo: imporove here
-//		foreach($payable->creditCards as $creditCard) {
-			try {
-				$transactionModel = $this->createTransactionModel( $payable, $products, $creditCard );
-
-				$transaction = $this->createTransactionOnIyzipay(
-					$payable,
-					$creditCard,
-					compact( 'products', 'currency', 'installment', 'transactionModel' ),
-					$subscription
-				);
-
-				return $this->storeTransactionModel( $transactionModel, $transaction, $payable, $products,
-				                                     $creditCard );
-			} catch (TransactionSaveException $e) {
-				$messages[]               = $creditCard->number . ': ' . $e->getMessage();
-				$transactionModel->status = FALSE;
-				$transactionModel->error  = $creditCard->number . ': ' . $e->getMessage();
-				$transactionModel->save();
-//				continue;
-			}
-//		}
-
-		throw new TransactionSaveException( implode( ', ', $messages ) );
-	}
-
-
-	/**
-	 * @param PayableContract $payable
-	 * @param Collection      $products
-	 * @param CreditCard      $creditCard
-	 * @param                 $currency
-	 * @param                 $installment
-	 * @param bool            $subscription
-	 *
-	 * @return ThreedsInitialize
-	 * @throws PayableMustHaveCreditCardException
-	 * @throws TransactionSaveException
-	 */
-	public function initializeThreeds (
-		Payable $payable, Collection $products, CreditCard $creditCard, $currency, $installment, $subscription = FALSE
-	): ThreedsInitialize {
-
-		$this->validateBillable( $payable );
-		$this->validateHasCreditCard( $payable );
-		$this->validateCreditCard( $payable, $creditCard );
-
-		$callback = route( 'threeds.callback' );
-
-		$messages = []; // @todo: imporove here
-		//		foreach ($payable->creditCards as $creditCard) {
-		try {
-			$transactionModel = $this->createTransactionModel( $payable, $products, $creditCard );
-
-			$threedsInitialize = $this->initializeThreedsOnIyzipay(
-				$payable,
-				$creditCard,
-				compact( 'products', 'currency', 'installment', 'callback', 'transactionModel' ),
-				$subscription
-			);
-
-			return $threedsInitialize;
-		} catch (ThreedsInitializeException $e) {
-			$messages[]               = $creditCard->number . ': ' . $e->getMessage();
-			$transactionModel->status = FALSE;
-			$transactionModel->error  = $messages;
-			$transactionModel->save();
-			//				continue;
-		}
-		//		}
-
-		throw new ThreedsInitializeException( implode( ', ', $messages ) );
-
-	}
-
-	/**
 	 * @param Request $request
-	 *
 	 * @return Transaction
 	 */
-	public function threedsPayment (Request $request): Transaction
+	public function threedsPayment(Request $request): Transaction
 	{
+		$transaction = Transaction::findOrFail($request->conversationId);
 
 		try {
-			$transactionModel = Transaction::findOrFail( $request->conversationId );
+			$threedsPayment = $this->createThreedsPayment($request);
 
-			$threedsPayment = $this->createThreedsPayment( $request );
+			// Update transaction with Iyzipay response
+			$transaction->iyzipay_key = $threedsPayment->getPaymentId();
+			$transaction->status = TransactionStatus::SUCCESS;
+			$transaction->error = null;
 
-			$transactionModel = $this->storeTransactionModel( $transactionModel, $threedsPayment,
-			                                                           $transactionModel->billable,
-			                                                           session()->get('iyzico.products'),
-			                                                           $transactionModel->creditCard );
-			$this->storeSubscription($transactionModel);
+			// Get the first payment item's transaction ID for refunds
+			$paymentItems = $threedsPayment->getPaymentItems();
+			if (!empty($paymentItems)) {
+				$transaction->iyzipay_transaction_id = $paymentItems[0]->getPaymentTransactionId();
+			}
 
-			event( new ThreedsCallback( $transactionModel ) );
+			$transaction->save();
 
-			return $transactionModel;
+			// Mark card as verified after any successful payment
+			if ($transaction->creditCard && !$transaction->creditCard->verified) {
+				$transaction->creditCard->verified = true;
+				$transaction->creditCard->save();
+			}
+
+			event(new ThreedsCallback($transaction));
+
+			return $transaction;
+
 		} catch (ThreedsCreateException $e) {
-			$transactionModel->status = FALSE;
-			$transactionModel->error  = $transactionModel->creditCard->number . ': ' . $e->getMessage();
-			$transactionModel->save();
+			$transaction->status = TransactionStatus::FAILED;
+			$transaction->error = [
+				'message' => $e->getMessage(),
+				'card' => $transaction->creditCard?->number
+			];
+			$transaction->save();
 
-			$this->removeSubscription();
+			// If payment failed and this was a subscription, delete the subscription
+			if ($transaction->subscription) {
+				$transaction->subscription->delete();
+			}
 
-			return $transactionModel;
+			event(new ThreedsCancelCallback($transaction));
+
+			return $transaction;
 		}
-
 	}
 
 	public function initializeBkm (
@@ -294,6 +316,69 @@ class IyzipayLaravel
 
 		$transactionModel->refunds = $refunds;
 		$transactionModel->save();
+
+		return $transactionModel;
+	}
+
+
+    /**
+     * Refund a transaction (Full or Partial).
+     *
+     * @param Transaction $transactionModel
+     * @param float|null $amount The amount to refund. If null, refunds the full remaining amount.
+     *
+     * @return Transaction
+     * @throws InvalidArgumentException
+     * @throws TransactionRefundException
+     */
+	public function refund (Transaction $transactionModel, ?float $amount = null): Transaction
+	{
+
+        //check previous partial-refunds for given transaction
+        $remainingBalance = $transactionModel->amount - $transactionModel->refunded_amount;
+
+        $amountToRefund = $amount ?? $remainingBalance;
+
+        if ($amountToRefund <= 0) {
+            throw new InvalidArgumentException("Refund amount must be greater than zero.");
+        }
+
+        // Use epsilon comparison (0.0001) for float precision safety
+        if ($amountToRefund > ($remainingBalance + 0.0001)) {
+            throw new InvalidArgumentException(
+                "Refund amount ({$amountToRefund}) exceeds the remaining refundable balance ({$remainingBalance})."
+            );
+        }
+
+        $result = $this->createRefundOnIyzipay($transactionModel, $amountToRefund);
+
+        $currentRefunds = $transactionModel->refunds ?? [];
+
+        $actualRefundedAmount = (float) $result->getPrice();
+
+        $currentRefunds[] = [
+            'type'                      => 'refund',
+            'amount'                    => (float) $result->getPrice(),
+            'iyzipay_key'               => $result->getPaymentId(),
+            'iyzipay_transaction_id'    => $result->getPaymentTransactionId(),
+            'date'                      => Carbon::now()->toIso8601String()
+        ];
+
+		$transactionModel->refunds = $currentRefunds;
+
+        $newTotalRefunded = $transactionModel->refunded_amount + $actualRefundedAmount;
+
+        // Check if fully refunded (using epsilon for float safety)
+        $isFullyRefunded = abs($transactionModel->amount - $newTotalRefunded) < 0.001;
+
+        if ($isFullyRefunded) {
+            $transactionModel->status = TransactionStatus::REFUNDED;
+            $transactionModel->refunded_at = now();
+        } else {
+            $transactionModel->status = TransactionStatus::PARTIAL_REFUNDED;
+        }
+
+        $transactionModel->save();
 
 		return $transactionModel;
 	}
@@ -377,66 +462,6 @@ class IyzipayLaravel
 
 
 	/**
-	 * @param Payment         $transaction
-	 * @param PayableContract $payable
-	 * @param Collection      $products
-	 * @param CreditCard      $creditCard
-	 *
-	 * @return Transaction
-	 */
-	private function storeTransactionModel (
-		Transaction $transactionModel,
-		PaymentResource $transaction,
-		Payable $payable,
-		Collection $products,
-		CreditCard $creditCard
-	): Transaction {
-
-		// TODO: $products ProductContract'tan türemesi gerekiyor. getKeyName vs yok callback'ten sonra array olarak geldiği için.
-		$iyzipayProducts = [];
-		foreach($transaction->getPaymentItems() as $paymentItem) {
-			$iyzipayProducts[] = [
-				'iyzipay_key' => $paymentItem->getPaymentTransactionId(),
-				'paidPrice'   => $paymentItem->getPaidPrice(),
-				'product'     => $products->where(
-					$products[0]->getKeyName(),
-					$paymentItem->getItemId()
-				)->first()->toArray()
-			];
-		}
-
-		$transactionModel->fill( [
-			                         'amount'      => $transaction->getPaidPrice(),
-			                         'products'    => $iyzipayProducts,
-			                         'iyzipay_key' => $transaction->getPaymentId(),
-			                         'currency'    => $transaction->getCurrency(),
-			                         'status'      => TRUE,
-		                         ] );
-		//        $transactionModel = new Transaction();
-
-		$transactionModel->creditCard()->associate( $creditCard );
-		$payable->transactions()->save( $transactionModel );
-
-		return $transactionModel->fresh();
-	}
-
-
-	/**
-	 * @param Transaction $transaction
-	 */
-	private function storeSubscription (Transaction $transaction) {
-		if(session()->has('iyzico.subscription')) {
-			$subscription = session()->get('iyzico.subscription');
-			$subscription->next_charge_at = $subscription->next_charge_at->addMonths(($subscription->plan->interval == 'yearly') ? 12 : 1);
-			$subscription->save();
-
-			$transaction->subscription()->associate($subscription);
-			$transaction->save();
-		}
-	}
-
-
-	/**
 	 * @param PayableContract $payable
 	 * @param Collection      $products
 	 * @param CreditCard      $creditCard
@@ -470,31 +495,27 @@ class IyzipayLaravel
 
 
 	/**
-	 * @param Request $request
+	 * Handle 3DS payment cancellation (user cancelled at bank page).
 	 *
+	 * @param Request $request
 	 * @return Transaction
 	 */
-	public function cancelThreedsPayment (Request $request): Transaction
+	public function cancelThreedsPayment(Request $request): Transaction
 	{
+		$transaction = Transaction::findOrFail($request->conversationId);
 
-		$transactionModel         = Transaction::findOrFail( $request->conversationId );
-		$transactionModel->status = FALSE;
-		$transactionModel->error  = 'Ödeme iptal edildi';
-		$transactionModel->save();
+		$transaction->status = TransactionStatus::FAILED;
+		$transaction->error = ['message' => 'Ödeme iptal edildi'];
+		$transaction->save();
 
-		$this->removeSubscription();
-
-		event( new ThreedsCancelCallback( $transactionModel ) );
-
-		return $transactionModel;
-	}
-
-	protected function removeSubscription (): void
-	{
-		if(session()->has('iyzico.subscription')) {
-			$subscription = session()->get('iyzico.subscription');
-			$subscription->delete();
+		// If this was a subscription payment, delete the subscription
+		if ($transaction->subscription) {
+			$transaction->subscription->delete();
 		}
+
+		event(new ThreedsCancelCallback($transaction));
+
+		return $transaction;
 	}
 
 	/**

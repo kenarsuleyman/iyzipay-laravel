@@ -18,6 +18,11 @@ class CreditCard extends Model
         'bank',
         'last_four',
         'association',
+        'verified',
+    ];
+
+    protected $casts = [
+        'verified' => 'boolean',
     ];
 
     public function owner(): BelongsTo

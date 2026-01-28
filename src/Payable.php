@@ -3,6 +3,8 @@
 namespace Iyzico\IyzipayLaravel;
 
 use Iyzico\IyzipayLaravel\DTOs\CardData;
+use Iyzico\IyzipayLaravel\Enums\TransactionStatus;
+use Iyzico\IyzipayLaravel\Enums\TransactionType;
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardRemoveException;
 use Iyzico\IyzipayLaravel\Exceptions\Card\CardSaveException;
 use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionSaveException;
@@ -11,6 +13,8 @@ use Iyzico\IyzipayLaravel\Models\Subscription;
 use Iyzico\IyzipayLaravel\Models\Transaction;
 use Iyzico\IyzipayLaravel\StorableClasses\BillFields;
 use Iyzico\IyzipayLaravel\StorableClasses\Plan;
+use Iyzico\IyzipayLaravel\StorableClasses\Product;
+use Iyzipay\Model\BasketItemType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
@@ -87,33 +91,55 @@ trait Payable
     }
 
     /**
-     * Single payment for the payable
+     * Perform a single, non-3DS payment (Auto-Payment).
      *
      * @param Collection $products
      * @param CreditCard $creditCard
      * @param string $currency
      * @param int $installment
-     * @param bool $subscription
      * @return Transaction
      * @throws TransactionSaveException
      */
-    public function pay(Collection $products, CreditCard $creditCard, $currency = 'TRY', $installment = 1, bool $subscription = false): Transaction
+    public function pay(Collection $products, CreditCard $creditCard, $currency = 'TRY', $installment = 1): Transaction
     {
-        return IyzipayLaravel::singlePayment($this, $products, $creditCard, $currency, $installment, $subscription);
+        // 1. Calculate Total Amount
+        // We assume products have a getPrice() method (like your Plan model)
+        $totalAmount = $products->reduce(function ($carry, $item) {
+            return $carry + $item->getPrice();
+        }, 0);
+
+        // 2. Create the Transaction (PENDING)
+        $transaction = new Transaction([
+            'amount'      => $totalAmount,
+            'currency'    => $currency,
+            'installment' => $installment,
+            'products'    => $products, // Casts to array automatically
+            'type'        => TransactionType::CHARGE,
+            'status'      => TransactionStatus::PENDING,
+        ]);
+
+        // 3. Associate Relationships
+        $transaction->billable()->associate($this);
+        $transaction->creditCard()->associate($creditCard);
+
+        // If this method is called manually, there is no subscription_id.
+        // If called via the Scheduler, the Scheduler will create the transaction itself
+        // and call singlePayment() directly, skipping this wrapper.
+
+        $transaction->save();
+
+        // 4. Process Payment
+        return IyzipayLaravel::singlePayment($transaction);
     }
 
-	/**
-	 * @param Collection $products
-	 * @param CreditCard $creditCard
-	 * @param string     $currency
-	 * @param int        $installment
-	 * @param bool       $subscription
-	 * @throws
-	 * @return ThreedsInitialize
-	 */
-	public function securePay(Collection $products, CreditCard $creditCard, $currency = 'TRY', $installment = 1, $subscription = false): ThreedsInitialize
-	{
-		return IyzipayLaravel::initializeThreeds($this, $products, $creditCard, $currency, $installment, $subscription);
+    /**
+     * @param Transaction $transaction
+     * @return ThreedsInitialize
+     * @throws \Exception
+     */
+    public function securePay(Transaction $transaction): ThreedsInitialize
+    {
+        return IyzipayLaravel::initializeThreeds($transaction);
     }
 
     public function payWithBKM(Collection $products, $currency = 'TRY', $installment = 1, $subscription = false): BkmInitialize
@@ -122,23 +148,63 @@ trait Payable
     }
 
     /**
-     * Subscribe to a plan.
-     * @param Plan $plan
-     * @param CreditCard $creditCard
-     * @return ThreedsInitialize
+     * @throws \Exception
      */
     public function subscribe(Plan $plan, CreditCard $creditCard): ThreedsInitialize
     {
-        $this->subscriptions()->save(
-            new Subscription([
-                'next_charge_amount' => $plan->price,
-                'currency'           => $plan->currency,
-                'next_charge_at'     => Carbon::now()->addDays($plan->trialDays)->startOfDay(),
-                'plan'               => $plan
-            ])
-        );
+        $isTrial = $plan->trialDays > 0;
 
-        return $this->paySubscription($creditCard);
+        // 1. Calculate the Next Charge Date for the Subscription
+        // - If Trial: The customer pays nothing now (except verification). Next charge is after trial.
+        // - If Paid: The customer pays for 1st month now. Next charge is next month.
+        $nextChargeDate = $isTrial
+            ? Carbon::now()->addDays($plan->trialDays)
+            : Carbon::now()->addMonths($plan->interval == 'yearly' ? 12 : 1);
+
+        // 2. Create the Subscription
+        $subscription = $this->subscriptions()->create([
+            'next_charge_amount' => $plan->price,
+            'currency'           => $plan->currency,
+            'next_charge_at'     => $nextChargeDate,
+            'plan'               => $plan
+        ]);
+
+        // 3. Determine Transaction Details
+        // - If Trial: We charge 1.00 TL to verify the card.
+        // - If Paid: We charge the full Plan price.
+        $isVerification = $isTrial && !$creditCard->verified;
+        $amount = $isVerification ? 1.00 : $plan->price;
+        $type   = $isVerification ? TransactionType::VERIFICATION : TransactionType::CHARGE;
+
+        // For verification, create a 1 TL product (Iyzipay requires product total = transaction total)
+        $products = $isVerification
+            ? [new Product(
+                id: 'card-verification',
+                name: 'Kart Doğrulama',
+                price: 1.00,
+                category: 'Verification',
+                type: BasketItemType::VIRTUAL
+            )]
+            : [$plan];
+
+        // 4. Create the Transaction Record First (Pending)
+        $transaction = new Transaction([
+            'amount'   => $amount,
+            'currency' => $plan->currency,
+            'products' => $products,
+            'type'     => $type,
+            'status'   => TransactionStatus::PENDING,
+        ]);
+
+        // Associate Relationships
+        $transaction->billable()->associate($this);
+        $transaction->creditCard()->associate($creditCard);
+        $transaction->subscription()->associate($subscription);
+        $transaction->save();
+
+        // 5. Initiate 3DS Payment
+        // The callback will find the transaction by conversationId (transaction ID)
+        return $this->securePay($transaction);
     }
 
     /**
@@ -157,32 +223,6 @@ trait Payable
         }
 
         return false;
-    }
-
-    /**
-     * Payment for the subscriptions of payable
-     */
-    public function paySubscription(CreditCard $creditCard): ThreedsInitialize
-    {
-	    $this->load('subscriptions');
-
-        foreach ($this->subscriptions as $subscription) {
-            if ($subscription->canceled() || $subscription->next_charge_at > Carbon::today()->startOfDay()) {
-                continue;
-            }
-
-            if ($subscription->next_charge_amount > 0) {
-                $transaction = $this->securePay(collect([$subscription->plan]), $creditCard, $subscription->plan->currency, 1, true);
-	            session()->flash('iyzico.subscription', $subscription);
-
-                return $transaction;
-//                $transaction->subscription()->associate($subscription);
-//                $transaction->save();
-            }
-
-//            $subscription->next_charge_at = $subscription->next_charge_at->addMonths(($subscription->plan->interval == 'yearly') ? 12 : 1);
-//            $subscription->save();
-        }
     }
 
     /**
