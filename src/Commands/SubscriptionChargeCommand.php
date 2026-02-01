@@ -1,14 +1,9 @@
 <?php
 
-
 namespace Iyzico\IyzipayLaravel\Commands;
 
-
-use Iyzico\IyzipayLaravel\Events\SubscriptionCouldNotPaid;
-use Iyzico\IyzipayLaravel\Exceptions\Transaction\TransactionSaveException;
-use Iyzico\IyzipayLaravel\Models\Subscription;
-use Iyzico\IyzipayLaravel\PayableContract as Payable;
 use Illuminate\Console\Command;
+use Iyzico\IyzipayLaravel\IyzipayLaravelFacade as IyzipayLaravel;
 
 class SubscriptionChargeCommand extends Command
 {
@@ -17,41 +12,17 @@ class SubscriptionChargeCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'iyzipay:subscription_charge';
+    protected $signature = 'iyzipay:charge';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Charges subscription prices';
+    protected $description = 'Process all due subscription payments';
 
-    public function handle()
+    public function handle(): void
     {
-        $this->chargePayables($this->getWillBeChargedPayables());
-    }
-
-    private function getWillBeChargedPayables()
-    {
-        $subscriptions = Subscription::active()->get();
-
-        $payables = collect();
-        foreach ($subscriptions as $subscription)
-        {
-            $payables->push($subscription->owner);
-        }
-
-        return $payables;
-    }
-
-    private function chargePayables($payables)
-    {
-        $payables->each(function (Payable $payable) {
-            try {
-                $payable->paySubscription();
-            } catch (TransactionSaveException $e) {
-                event(new SubscriptionCouldNotPaid($payable));
-            }
-        });
+        IyzipayLaravel::processDuePayments();
     }
 }

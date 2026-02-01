@@ -25,11 +25,15 @@ use Iyzico\IyzipayLaravel\Models\Transaction;
 use Iyzico\IyzipayLaravel\Traits\ManagesPlans;
 use Iyzico\IyzipayLaravel\Traits\PreparesCreditCardRequest;
 use Iyzico\IyzipayLaravel\Traits\PreparesTransactionRequest;
+use Iyzico\IyzipayLaravel\Events\SubscriptionCharged;
+use Iyzico\IyzipayLaravel\Events\SubscriptionChargeFailed;
 use Iyzico\IyzipayLaravel\Events\ThreedsCancelCallback;
 use Iyzico\IyzipayLaravel\Events\ThreedsCallback;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Iyzipay\Model\ApiTest;
+use Iyzico\IyzipayLaravel\Enums\TransactionType;
+use Iyzico\IyzipayLaravel\Models\Subscription;
 use Iyzipay\Model\Payment;
 use Iyzipay\Model\BkmInitialize;
 use Iyzipay\Model\ThreedsInitialize;
@@ -167,6 +171,66 @@ class IyzipayLaravel
         }
     }
 
+
+    /**
+     * Process all due subscription payments.
+     *
+     * Finds subscriptions where next_charge_at has passed and charges them
+     * using the owner's most recent credit card via non-3DS payment.
+     *
+     * Fires SubscriptionCharged on success and SubscriptionChargeFailed on failure.
+     */
+    public function processDuePayments(): void
+    {
+        $dueSubscriptions = Subscription::notPaid()->get();
+
+        foreach ($dueSubscriptions as $subscription) {
+            $this->processSubscriptionPayment($subscription);
+        }
+    }
+
+    /**
+     * Process a single subscription payment.
+     */
+    private function processSubscriptionPayment(Subscription $subscription): void
+    {
+        $payable = $subscription->owner;
+        $creditCard = $payable->creditCards()->latest()->first();
+
+        if (!$creditCard) {
+            event(new SubscriptionChargeFailed($subscription));
+            return;
+        }
+
+        $transaction = new Transaction([
+            'amount'      => $subscription->next_charge_amount,
+            'currency'    => $subscription->currency,
+            'products'    => [$subscription->plan],
+            'type'        => TransactionType::CHARGE,
+            'status'      => TransactionStatus::PENDING,
+            'installment' => 1,
+        ]);
+
+        $transaction->billable()->associate($payable);
+        $transaction->creditCard()->associate($creditCard);
+        $transaction->subscription()->associate($subscription);
+        $transaction->save();
+
+        try {
+            $this->singlePayment($transaction);
+
+            $nextChargeDate = $subscription->plan->interval === 'yearly'
+                ? Carbon::now()->addYear()
+                : Carbon::now()->addMonth();
+
+            $subscription->next_charge_at = $nextChargeDate;
+            $subscription->save();
+
+            event(new SubscriptionCharged($subscription, $transaction));
+        } catch (\Exception $e) {
+            event(new SubscriptionChargeFailed($subscription, $transaction->fresh()));
+        }
+    }
 
     public function initializeThreeds(Transaction $transaction): ThreedsInitialize
     {
